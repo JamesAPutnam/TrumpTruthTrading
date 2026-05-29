@@ -1,0 +1,1 @@
+trade_id,post_id,ticker,side,qty,entry_price,entry_time,alpaca_order_id,tp_price,sl_price,status,exit_price,exit_time,pnl_pct,outcome,signal,confidence,post_preview
