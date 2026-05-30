@@ -10,6 +10,7 @@ ALPACA_PAPER = os.getenv("ALPACA_PAPER", "true").lower() == "true"
 
 TRUTH_SOCIAL_BASE = "https://truthsocial.com/api/v1"
 TRUMP_ACCOUNT_HANDLE = "realDonaldTrump"
+TRUMP_ACCOUNT_ID = "107780257626128497"  # pre-resolved, avoids lookup in CI
 POLL_INTERVAL_SECONDS = 120  # 2 minutes
 
 POSITION_SIZE_PCT = 0.05   # 5% of buying power per trade

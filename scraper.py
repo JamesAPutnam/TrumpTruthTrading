@@ -15,7 +15,7 @@ ACCOUNT_ID_CACHE = DATA_DIR / "trump_id.txt"
 POSTS_LOG = DATA_DIR / "posts_log.csv"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; TrumpTruthTrading/1.0)",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "application/json",
 }
 
@@ -45,6 +45,9 @@ def _retry(fn, retries=3, backoff=5):
 
 
 def get_trump_account_id() -> str:
+    # Use hardcoded ID first — avoids a network lookup that cloud IPs may have blocked
+    if config.TRUMP_ACCOUNT_ID:
+        return config.TRUMP_ACCOUNT_ID
     if ACCOUNT_ID_CACHE.exists():
         cached = ACCOUNT_ID_CACHE.read_text().strip()
         if cached:
