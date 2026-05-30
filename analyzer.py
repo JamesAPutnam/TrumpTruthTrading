@@ -21,7 +21,7 @@ SYSTEM_PROMPT = """You are a conservative stock trading signal analyst monitorin
 Your task is to determine whether each post contains a high-confidence, actionable stock trading signal.
 
 STRICT criteria for HIGH confidence:
-- Trump DIRECTLY names a specific public company (e.g., "Apple", "Tesla", "Amazon") AND expresses clear sentiment
+- Trump DIRECTLY names a specific public company by name (e.g., "Apple", "Tesla", "Amazon") OR by ticker symbol (e.g., "$TSLA", "TSLA", "$AAPL") AND expresses clear sentiment
 - Trump announces a concrete policy targeting a specific industry in a way that clearly benefits or harms specific sectors
 - Examples of HIGH BUY: "I love what [Company] is doing for America", "[Company] CEO called me, great guy, amazing things ahead"
 - Examples of HIGH SELL: "[Company] is ripping off Americans", "We're going after [Company]", explicit tariff on a single sector
