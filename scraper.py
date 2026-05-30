@@ -1,5 +1,6 @@
 import csv
 import re
+import time
 import logging
 import requests
 from datetime import datetime, timezone
@@ -28,20 +29,38 @@ def ensure_data_dir():
             csv.DictWriter(f, fieldnames=POSTS_LOG_FIELDS).writeheader()
 
 
+def _retry(fn, retries=3, backoff=5):
+    """Call fn(), retrying up to `retries` times with exponential backoff."""
+    last_err = None
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                wait = backoff * (2 ** attempt)
+                logger.warning(f"Request failed (attempt {attempt + 1}/{retries}), retrying in {wait}s: {e}")
+                time.sleep(wait)
+    raise last_err
+
+
 def get_trump_account_id() -> str:
     if ACCOUNT_ID_CACHE.exists():
         cached = ACCOUNT_ID_CACHE.read_text().strip()
         if cached:
             return cached
 
-    resp = requests.get(
-        f"{config.TRUTH_SOCIAL_BASE}/accounts/lookup",
-        params={"acct": config.TRUMP_ACCOUNT_HANDLE},
-        headers=HEADERS,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    account_id = resp.json()["id"]
+    def _lookup():
+        resp = requests.get(
+            f"{config.TRUTH_SOCIAL_BASE}/accounts/lookup",
+            params={"acct": config.TRUMP_ACCOUNT_HANDLE},
+            headers=HEADERS,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()["id"]
+
+    account_id = _retry(_lookup)
     ACCOUNT_ID_CACHE.write_text(account_id)
     logger.info(f"Resolved Trump account ID: {account_id}")
     return account_id
@@ -59,22 +78,32 @@ def save_last_post_id(post_id: str):
 
 
 def fetch_new_posts(account_id: str, since_id: str | None = None) -> list[dict]:
-    params: dict = {"limit": 20, "exclude_replies": "true"}
-    if since_id:
-        params["min_id"] = since_id
+    def _fetch():
+        params: dict = {"limit": 20, "exclude_replies": "true"}
+        if since_id:
+            params["min_id"] = since_id
+        resp = requests.get(
+            f"{config.TRUTH_SOCIAL_BASE}/accounts/{account_id}/statuses",
+            params=params,
+            headers=HEADERS,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
-    resp = requests.get(
-        f"{config.TRUTH_SOCIAL_BASE}/accounts/{account_id}/statuses",
-        params=params,
-        headers=HEADERS,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    return _retry(_fetch)
+
+
+def filter_original_posts(posts: list[dict]) -> list[dict]:
+    """Drop reTruths — posts where Trump is reposting someone else's content."""
+    original = [p for p in posts if not p.get("reblog")]
+    dropped = len(posts) - len(original)
+    if dropped:
+        logger.debug(f"Filtered {dropped} reTruth(s)")
+    return original
 
 
 def log_post(post: dict, signal_str: str, confidence: str, tickers: list[str], traded: bool):
-    """Append post to the CSV log."""
     text = strip_html(post.get("content", ""))
     with open(POSTS_LOG, "a", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=POSTS_LOG_FIELDS)

@@ -2,11 +2,12 @@ import argparse
 import time
 import logging
 from pathlib import Path
+from analyzer import TradeSignal
 import config
 import scraper
 import trade_tracker
 from analyzer import analyze_post
-from trader import execute_trade
+from trader import execute_trade, is_market_open
 
 Path("logs").mkdir(exist_ok=True)
 logging.basicConfig(
@@ -18,6 +19,29 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("main")
+
+
+def execute_pending_signals():
+    """At market open, fire any EXTREME signals that were queued overnight."""
+    trade_tracker.purge_expired_pending()
+    pending = trade_tracker.get_pending_signals()
+    if not pending:
+        return
+    if not is_market_open():
+        return
+
+    logger.info(f"Market open — executing {len(pending)} queued EXTREME signal(s)")
+    for entry in pending:
+        signal = TradeSignal(
+            market_relevant=True,
+            tickers=entry["tickers"],
+            signal=entry["signal"],
+            confidence="EXTREME",
+            reasoning=f"[QUEUED] {entry['reasoning']}",
+            post_id=entry["post_id"],
+        )
+        execute_trade(signal)
+        trade_tracker.remove_pending_signal(entry["post_id"])
 
 
 def process_post(post: dict, performance_context: str = "") -> bool:
@@ -36,39 +60,38 @@ def process_post(post: dict, performance_context: str = "") -> bool:
         logger.info(f"  -> {signal.reasoning}")
 
     traded = False
-    if signal.market_relevant and signal.confidence == "HIGH":
+    if signal.market_relevant and signal.confidence in ("HIGH", "EXTREME"):
         traded = execute_trade(signal)
         if traded:
             logger.info("  -> TRADE EXECUTED")
+        elif signal.confidence == "EXTREME" and not is_market_open():
+            logger.info("  -> EXTREME signal queued for market open")
 
     scraper.log_post(post, signal.signal, signal.confidence, signal.tickers, traded)
     return traded
 
 
 def run_once():
-    """Single pass — check outcomes, fetch new posts, process, exit. Used by GitHub Actions."""
     scraper.ensure_data_dir()
-
-    # 1. Check if any open trades have resolved
+    execute_pending_signals()
     trade_tracker.check_and_close_trades()
-
-    # 2. Build performance context from closed trade history
     perf_context = trade_tracker.build_performance_context()
     if perf_context:
-        logger.info("Performance context loaded for LLM")
+        logger.info("Performance context loaded")
 
-    # 3. Fetch and process new posts
     account_id = scraper.get_trump_account_id()
     last_id = scraper.get_last_post_id()
     logger.info(f"Single-pass poll | last_post_id={last_id}")
 
     posts = scraper.fetch_new_posts(account_id, since_id=last_id)
+    posts = scraper.filter_original_posts(posts)
+
     if not posts:
-        logger.info("No new posts.")
+        logger.info("No new original posts.")
         return
 
     posts = list(reversed(posts))  # oldest-first
-    logger.info(f"Found {len(posts)} new post(s)")
+    logger.info(f"Found {len(posts)} new original post(s)")
 
     for post in posts:
         process_post(post, performance_context=perf_context)
@@ -78,7 +101,6 @@ def run_once():
 
 
 def run_loop():
-    """Continuous loop for local use."""
     scraper.ensure_data_dir()
     account_id = scraper.get_trump_account_id()
 
@@ -90,15 +112,17 @@ def run_loop():
 
     while True:
         try:
+            execute_pending_signals()
             trade_tracker.check_and_close_trades()
             perf_context = trade_tracker.build_performance_context()
 
             last_id = scraper.get_last_post_id()
             posts = scraper.fetch_new_posts(account_id, since_id=last_id)
+            posts = scraper.filter_original_posts(posts)
 
             if posts:
                 posts = list(reversed(posts))
-                logger.info(f"Found {len(posts)} new post(s)")
+                logger.info(f"Found {len(posts)} new original post(s)")
                 for post in posts:
                     process_post(post, performance_context=perf_context)
                     scraper.save_last_post_id(post["id"])
@@ -118,11 +142,7 @@ def main():
     parser = argparse.ArgumentParser(description="TrumpTruthTrading pipeline")
     parser.add_argument("--once", action="store_true", help="Single pass then exit (CI mode)")
     args = parser.parse_args()
-
-    if args.once:
-        run_once()
-    else:
-        run_loop()
+    run_once() if args.once else run_loop()
 
 
 if __name__ == "__main__":
