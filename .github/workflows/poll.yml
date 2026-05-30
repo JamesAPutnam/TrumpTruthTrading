@@ -32,6 +32,7 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_PAPER: 'true'
+          TRUTH_SOCIAL_PROXY_URL: ${{ secrets.TRUTH_SOCIAL_PROXY_URL }}
         run: python main.py --once
 
       - name: Commit updated state

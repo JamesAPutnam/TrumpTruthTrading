@@ -8,7 +8,11 @@ ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
 ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
 ALPACA_PAPER = os.getenv("ALPACA_PAPER", "true").lower() == "true"
 
-TRUTH_SOCIAL_BASE = "https://truthsocial.com/api/v1"
+# In GitHub Actions, TRUTH_SOCIAL_PROXY_URL is set to the Cloudflare Worker URL.
+# Locally, falls back to direct (home IPs are not blocked).
+_proxy = os.getenv("TRUTH_SOCIAL_PROXY_URL", "").rstrip("/")
+TRUTH_SOCIAL_BASE = (_proxy + "/api/v1") if _proxy else "https://truthsocial.com/api/v1"
+
 TRUMP_ACCOUNT_HANDLE = "realDonaldTrump"
 TRUMP_ACCOUNT_ID = "107780257626128497"  # pre-resolved, avoids lookup in CI
 POLL_INTERVAL_SECONDS = 120  # 2 minutes
